@@ -12,11 +12,14 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
+#include <queue>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-
+#include <mutex>
 #include "common/util/hash_util.h"
 
 namespace bustub {
@@ -103,6 +106,28 @@ class CountMinSketch {
   }
 
   /** @todo (student) can add their data structures that support count-min sketch operations */
+  std::unique_ptr<std::atomic<uint32_t>[]> sketch_matrix_;  // Sketch matrix with atomic counters
+
+  std::unordered_set<KeyType> items;                        // Set to track unique items inserted
+  uint16_t k_limit_{0};                                     // Limit for top-k items
+
+  // Min-heap comparator for top-k items
+  struct CandidateCmp {
+    bool operator()(const std::pair<KeyType, uint32_t> &a, const std::pair<KeyType, uint32_t> &b) const {
+      return a.second > b.second;  // Min-heap based on count
+    }
+  };
+
+  // Min-heap to maintain top-k items
+  std::priority_queue<std::pair<KeyType, uint32_t>, std::vector<std::pair<KeyType, uint32_t>>, CandidateCmp>
+      top_k_heap_;
+  mutable std::mutex mutex_;
+
+  /**
+   * @brief Updates the top-k min-heap with a new item
+   * @param item The item to consider for top-k
+   */
+  void UpdateTopK(const KeyType &item);
 };
 
 }  // namespace bustub
