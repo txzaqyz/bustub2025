@@ -71,7 +71,7 @@ class DiskScheduler {
 
   /**
    * @brief Deallocates a page on disk.
-   *
+   *(
    * Note: You should look at the documentation for `DeletePage` in `BufferPoolManager` before using this method.
    *
    * @param page_id The page ID of the page to deallocate from disk.
