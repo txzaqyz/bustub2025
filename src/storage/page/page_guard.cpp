@@ -236,7 +236,7 @@ WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> f
   // Acquire the write latch
   if (is_valid_) {
     write_latch_ = std::unique_lock<std::shared_mutex>(frame_->rwlatch_);
-    replacer_->RecordAccess(frame_->frame_id_, page_id_);
+    // replacer_->RecordAccess(frame_->frame_id_, page_id_);
     replacer_->SetEvictable(frame_->frame_id_, false);
     // Increment the pin count
     frame_->pin_count_.fetch_add(1);
@@ -292,6 +292,7 @@ auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard
   bpm_latch_ = std::move(that.bpm_latch_);
   disk_scheduler_ = std::move(that.disk_scheduler_);
   is_valid_ = that.is_valid_;
+  write_latch_ = std::move(that.write_latch_);
 
   // Invalidate that, avoid double free
   that.page_id_ = INVALID_PAGE_ID;
@@ -325,6 +326,7 @@ auto WritePageGuard::GetData() const -> const char * {
  */
 auto WritePageGuard::GetDataMut() -> char * {
   BUSTUB_ENSURE(is_valid_, "tried to use an invalid write guard");
+  frame_->is_dirty_ = true;
   return frame_->GetDataMut();
 }
 
@@ -358,7 +360,7 @@ void WritePageGuard::Flush() {
   // Wait for the write to complete
   const auto result = future.get();
   if (result) {
-    is_valid_ = false;
+    frame_->is_dirty_ = false;
   }
 }
 
