@@ -227,7 +227,7 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
  * returns `std::nullopt`; otherwise, returns a `WritePageGuard` ensuring exclusive and mutable access to a page's data.
  */
 auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_type) -> std::optional<WritePageGuard> {
-  std::scoped_lock latch(*bpm_latch_);
+  std::unique_lock<std::mutex> latch(*bpm_latch_);
 
   if (page_id == INVALID_PAGE_ID) {
     return std::nullopt;
@@ -239,7 +239,10 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
     auto frame_index = page_it->second;
     // Update replacer state
     replacer_->RecordAccess(frame_index, page_id);
-    WritePageGuard guard(page_id, frames_[frame_index], replacer_, bpm_latch_, disk_scheduler_);
+
+    auto frame = frames_[frame_index];
+    latch.unlock();
+    WritePageGuard guard(page_id, std::move(frame), replacer_, bpm_latch_, disk_scheduler_);
     return std::make_optional<WritePageGuard>(std::move(guard));
   }
 
@@ -251,7 +254,7 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
 
   // load page from disk
   auto frame_index = frame_id.value();
-  auto &frame = frames_[frame_index];
+  auto frame = frames_[frame_index];
   auto promise = disk_scheduler_->CreatePromise();
   auto future = promise.get_future();
   std::vector<DiskRequest> requests;
@@ -269,8 +272,8 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
   page_table_.insert({page_id, frame_index});
 
   replacer_->RecordAccess(frame_index, page_id);
-
-  WritePageGuard guard(page_id, frames_[frame_index], replacer_, bpm_latch_, disk_scheduler_);
+  latch.unlock();
+  WritePageGuard guard(page_id, std::move(frame), replacer_, bpm_latch_, disk_scheduler_);
   return std::make_optional<WritePageGuard>(std::move(guard));
 }
 
@@ -299,7 +302,7 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
  * returns `std::nullopt`; otherwise, returns a `ReadPageGuard` ensuring shared and read-only access to a page's data.
  */
 auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_type) -> std::optional<ReadPageGuard> {
-  std::scoped_lock<std::mutex> lock(*bpm_latch_);
+  std::unique_lock<std::mutex> lock(*bpm_latch_);
 
   if (page_id == INVALID_PAGE_ID) {
     return std::nullopt;
@@ -309,7 +312,9 @@ auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_typ
   if (page_it != page_table_.end()) {
     auto frame_index = page_it->second;
     replacer_->RecordAccess(frame_index, page_id);
-    ReadPageGuard guard(page_id, frames_[frame_index], replacer_, bpm_latch_, disk_scheduler_);
+    auto frame = frames_[frame_index];
+    lock.unlock();
+    ReadPageGuard guard(page_id, std::move(frame), replacer_, bpm_latch_, disk_scheduler_);
     return std::make_optional<ReadPageGuard>(std::move(guard));
   }
 
@@ -321,7 +326,7 @@ auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_typ
 
   // load page from disk
   auto frame_index = frame_id.value();
-  auto &frame = frames_[frame_index];
+  auto frame = frames_[frame_index];
   auto promise = disk_scheduler_->CreatePromise();
   auto future = promise.get_future();
   std::vector<DiskRequest> requests;
@@ -339,7 +344,8 @@ auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_typ
   page_table_.insert({page_id, frame_index});
 
   replacer_->RecordAccess(frame_index, page_id);
-  ReadPageGuard guard(page_id, frames_[frame_index], replacer_, bpm_latch_, disk_scheduler_);
+  lock.unlock();
+  ReadPageGuard guard(page_id, std::move(frame), replacer_, bpm_latch_, disk_scheduler_);
   return std::make_optional<ReadPageGuard>(std::move(guard));
 }
 
