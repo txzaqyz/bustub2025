@@ -241,6 +241,8 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
     replacer_->RecordAccess(frame_index, page_id);
 
     auto frame = frames_[frame_index];
+    frame->pin_count_.fetch_add(1);
+    replacer_->SetEvictable(frame_index, false);
     latch.unlock();
     WritePageGuard guard(page_id, std::move(frame), replacer_, bpm_latch_, disk_scheduler_);
     return std::make_optional<WritePageGuard>(std::move(guard));
@@ -267,11 +269,13 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
 
   // Update frame metadata
   frame->is_dirty_ = false;
-  frame->pin_count_.store(0);
+  frame->pin_count_.store(1);
   frame->page_id_ = page_id;
   page_table_.insert({page_id, frame_index});
 
   replacer_->RecordAccess(frame_index, page_id);
+  replacer_->SetEvictable(frame_index, false);
+  // Release the latch before constructing the guard
   latch.unlock();
   WritePageGuard guard(page_id, std::move(frame), replacer_, bpm_latch_, disk_scheduler_);
   return std::make_optional<WritePageGuard>(std::move(guard));
@@ -313,6 +317,8 @@ auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_typ
     auto frame_index = page_it->second;
     replacer_->RecordAccess(frame_index, page_id);
     auto frame = frames_[frame_index];
+    frame->pin_count_.fetch_add(1);
+    replacer_->SetEvictable(frame_index, false);
     lock.unlock();
     ReadPageGuard guard(page_id, std::move(frame), replacer_, bpm_latch_, disk_scheduler_);
     return std::make_optional<ReadPageGuard>(std::move(guard));
@@ -339,11 +345,12 @@ auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_typ
 
   // Update frame metadata
   frame->is_dirty_ = false;
-  frame->pin_count_.store(0);
+  frame->pin_count_.store(1);
   frame->page_id_ = page_id;
   page_table_.insert({page_id, frame_index});
 
   replacer_->RecordAccess(frame_index, page_id);
+  replacer_->SetEvictable(frame_index, false);
   lock.unlock();
   ReadPageGuard guard(page_id, std::move(frame), replacer_, bpm_latch_, disk_scheduler_);
   return std::make_optional<ReadPageGuard>(std::move(guard));

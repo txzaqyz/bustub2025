@@ -42,10 +42,7 @@ ReadPageGuard::ReadPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> fra
   if (is_valid_) {
     // Acquire the read latch
     read_latch_ = std::shared_lock<std::shared_mutex>(frame_->rwlatch_);
-    // Mark the frame as non-evictable
-    replacer_->SetEvictable(frame_->frame_id_, false);
-    // Increment the pin count
-    frame_->pin_count_.fetch_add(1);
+
   }
 }
 
@@ -236,10 +233,6 @@ WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> f
   // Acquire the write latch
   if (is_valid_) {
     write_latch_ = std::unique_lock<std::shared_mutex>(frame_->rwlatch_);
-    // replacer_->RecordAccess(frame_->frame_id_, page_id_);
-    replacer_->SetEvictable(frame_->frame_id_, false);
-    // Increment the pin count
-    frame_->pin_count_.fetch_add(1);
   }
 }
 
